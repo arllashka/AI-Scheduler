@@ -118,31 +118,65 @@ struct TaskCard: View {
     let scheduledTime: String?
     let onTap: () -> Void
     let onComplete: () -> Void
-    
+
+    @State private var isAnimating = false
+    @State private var showConfetti = false
+    @State private var confettiOffset: CGFloat = 0
+
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: AppSpacing.small) {
-                // Completion Button
-                Button(action: onComplete) {
-                    Image(systemName: isCompleted ? AppIcons.complete : AppIcons.incomplete)
-                        .font(.system(size: 24))
-                        .foregroundColor(isCompleted ? .accentGreen : .textTertiary)
+                // Completion Button with Animation
+                Button(action: handleComplete) {
+                    ZStack {
+                        // Circle background
+                        Circle()
+                            .strokeBorder(isCompleted ? Color.accentGreen : Color.textTertiary, lineWidth: 2)
+                            .frame(width: 28, height: 28)
+                            .background(
+                                Circle()
+                                    .fill(isCompleted ? Color.accentGreen.opacity(0.2) : Color.clear)
+                            )
+                            .scaleEffect(isAnimating ? 1.2 : 1.0)
+
+                        // Checkmark
+                        if isCompleted {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.accentGreen)
+                                .scaleEffect(isAnimating ? 1.3 : 1.0)
+                                .rotationEffect(.degrees(isAnimating ? 360 : 0))
+                        }
+
+                        // Confetti particles
+                        if showConfetti {
+                            ForEach(0..<6, id: \.self) { index in
+                                Circle()
+                                    .fill(confettiColor(for: index))
+                                    .frame(width: 4, height: 4)
+                                    .offset(x: confettiXOffset(for: index), y: confettiOffset)
+                                    .opacity(1.0 - Double(confettiOffset / 30))
+                            }
+                        }
+                    }
                 }
                 .buttonStyle(PlainButtonStyle())
-                
+
                 VStack(alignment: .leading, spacing: AppSpacing.xxsmall) {
                     // Title
                     Text(title)
                         .font(AppTypography.taskTitle)
                         .foregroundColor(.textPrimary)
                         .lineLimit(2)
-                    
+                        .strikethrough(isCompleted, color: .textSecondary)
+                        .opacity(isCompleted ? 0.6 : 1.0)
+
                     // Duration & Time
                     HStack(spacing: AppSpacing.small) {
                         Label(duration, systemImage: AppIcons.clock)
                             .font(AppTypography.caption)
                             .foregroundColor(.textSecondary)
-                        
+
                         if let scheduledTime = scheduledTime {
                             Text("•")
                                 .foregroundColor(.textTertiary)
@@ -152,9 +186,9 @@ struct TaskCard: View {
                         }
                     }
                 }
-                
+
                 Spacer()
-                
+
                 // Priority Indicator
                 priorityIndicator(priority)
             }
@@ -167,6 +201,52 @@ struct TaskCard: View {
             )
         }
         .buttonStyle(PlainButtonStyle())
+    }
+
+    private func handleComplete() {
+        // Trigger animation
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+            isAnimating = true
+        }
+
+        // Show confetti if completing (not uncompleting)
+        if !isCompleted {
+            showConfetti = true
+            withAnimation(.easeOut(duration: 0.6)) {
+                confettiOffset = -30
+            }
+
+            // Hide confetti after animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                showConfetti = false
+                confettiOffset = 0
+            }
+        }
+
+        // Haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+
+        // Call the completion handler
+        onComplete()
+
+        // Reset animation state
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            withAnimation {
+                isAnimating = false
+            }
+        }
+    }
+
+    private func confettiColor(for index: Int) -> Color {
+        let colors: [Color] = [.accentGreen, .primaryBlue, .accentPurple, .yellow, .orange, .pink]
+        return colors[index % colors.count]
+    }
+
+    private func confettiXOffset(for index: Int) -> CGFloat {
+        let angle = Double(index) * 60.0 // Spread in 60-degree increments
+        let radius: CGFloat = 20
+        return radius * cos(angle * .pi / 180)
     }
     
     @ViewBuilder

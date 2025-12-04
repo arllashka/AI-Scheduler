@@ -11,17 +11,21 @@ import SwiftData
 struct TaskListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \TaskItem.priority, order: .reverse) private var tasks: [TaskItem]
-    
+
     @State private var searchText = ""
     @State private var showAddTask = false
     @State private var showFilters = false
     @State private var selectedFilter: TaskFilter = .all
-    
+    @State private var selectedTask: TaskItem?
+
     // AI Scheduling
     @StateObject private var schedulerCoordinator = SchedulerCoordinator()
     @StateObject private var userPreferences = UserPreferences.shared
     @State private var showSchedulingResult = false
     @State private var schedulingResultMessage = ""
+
+    // Animation namespace for smooth transitions
+    @Namespace private var taskAnimation
     
     var body: some View {
         NavigationStack {
@@ -81,6 +85,9 @@ struct TaskListView: View {
             }
             .sheet(isPresented: $showFilters) {
                 FilterView(selectedFilter: $selectedFilter)
+            }
+            .sheet(item: $selectedTask) { task in
+                SingleTaskView(task: task)
             }
             .alert(schedulingResultMessage, isPresented: $showSchedulingResult) {
                 Button("OK", role: .cancel) { }
@@ -201,7 +208,7 @@ struct TaskListView: View {
             if !scheduledTasks.isEmpty {
                 VStack(alignment: .leading, spacing: AppSpacing.small) {
                     SectionHeader("Scheduled")
-                    
+
                     ForEach(scheduledTasks) { task in
                         TaskCard(
                             title: task.title,
@@ -210,19 +217,20 @@ struct TaskListView: View {
                             isCompleted: task.isCompleted,
                             scheduledTime: formatScheduledTime(task.scheduledStart)
                         ) {
-                            // Task tapped - could navigate to detail
+                            selectedTask = task
                         } onComplete: {
                             toggleTaskCompletion(task)
                         }
+                        .matchedGeometryEffect(id: task.id, in: taskAnimation)
                     }
                 }
             }
-            
+
             // Unscheduled Tasks
             if !unscheduledTasks.isEmpty {
                 VStack(alignment: .leading, spacing: AppSpacing.small) {
                     SectionHeader("To Schedule")
-                    
+
                     ForEach(unscheduledTasks) { task in
                         TaskCard(
                             title: task.title,
@@ -231,19 +239,20 @@ struct TaskListView: View {
                             isCompleted: task.isCompleted,
                             scheduledTime: nil
                         ) {
-                            // Task tapped
+                            selectedTask = task
                         } onComplete: {
                             toggleTaskCompletion(task)
                         }
+                        .matchedGeometryEffect(id: task.id, in: taskAnimation)
                     }
                 }
             }
-            
+
             // Completed Tasks
             if !completedTasks.isEmpty {
                 VStack(alignment: .leading, spacing: AppSpacing.small) {
                     SectionHeader("Completed")
-                    
+
                     ForEach(completedTasks) { task in
                         TaskCard(
                             title: task.title,
@@ -252,14 +261,22 @@ struct TaskListView: View {
                             isCompleted: task.isCompleted,
                             scheduledTime: formatScheduledTime(task.scheduledStart)
                         ) {
-                            // Task tapped
+                            selectedTask = task
                         } onComplete: {
                             toggleTaskCompletion(task)
                         }
+                        .matchedGeometryEffect(id: task.id, in: taskAnimation)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .top).combined(with: .opacity),
+                            removal: .move(edge: .bottom).combined(with: .opacity)
+                        ))
                     }
                 }
             }
         }
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: completedTasks.map { $0.id })
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: scheduledTasks.map { $0.id })
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: unscheduledTasks.map { $0.id })
     }
     
     // MARK: - Computed Properties
@@ -326,43 +343,52 @@ struct TaskListView: View {
     // MARK: - Actions
     
     private func toggleTaskCompletion(_ task: TaskItem) {
-        task.isCompleted.toggle()
-        task.updatedAt = Date()
-        try? modelContext.save()
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+            task.isCompleted.toggle()
+            task.updatedAt = Date()
+        }
+
+        // Save after a small delay to let animation start
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            try? modelContext.save()
+        }
     }
     
     private func scheduleTasksWithAI() {
-        // Get unscheduled tasks
+        // Get unscheduled tasks (excluding completed)
         let tasksToSchedule = unscheduledActiveTasks
-        
+
         guard !tasksToSchedule.isEmpty else {
             schedulingResultMessage = "No tasks to schedule!"
             showSchedulingResult = true
             return
         }
-        
+
         Task {
-            // Generate available slots
+            // Get existing scheduled tasks (excluding completed) to avoid conflicts
+            let existingScheduledTasks = tasks.filter { $0.scheduledStart != nil && !$0.isCompleted }
+
+            // Generate available slots considering existing schedule
             let availableSlots = AvailableSlotGenerator.generateSlots(
                 forNextDays: 7,
                 workHoursStart: userPreferences.workHoursStart,
                 workHoursEnd: userPreferences.workHoursEnd,
-                existingTasks: tasks.filter { $0.scheduledStart != nil && !$0.isCompleted }
+                existingTasks: existingScheduledTasks
             )
-            
+
             guard !availableSlots.isEmpty else {
                 schedulingResultMessage = "No available time slots found. Please check your work hours settings."
                 showSchedulingResult = true
                 return
             }
-            
+
             // Call AI scheduler
             await schedulerCoordinator.scheduleTasks(
                 from: tasksToSchedule,
                 availableSlots: availableSlots,
                 constraints: userPreferences.timeConstraints
             )
-            
+
             // Handle result
             if let error = schedulerCoordinator.lastError {
                 schedulingResultMessage = "Scheduling failed: \(error.localizedDescription)"
@@ -370,23 +396,91 @@ struct TaskListView: View {
             } else if let response = schedulerCoordinator.lastResponse {
                 // Apply scheduled slots to tasks
                 schedulerCoordinator.applySchedule(to: tasksToSchedule, from: response)
-                
+
                 // Save changes
                 try? modelContext.save()
-                
-                // Show success message
-                let scheduledCount = response.scheduledSlots.count
-                let unscheduledCount = response.unscheduledTasks.count
-                
-                if unscheduledCount == 0 {
-                    schedulingResultMessage = "✅ Successfully scheduled \(scheduledCount) task\(scheduledCount == 1 ? "" : "s")!"
-                } else {
-                    schedulingResultMessage = "⚠️ Scheduled \(scheduledCount) task\(scheduledCount == 1 ? "" : "s"), but \(unscheduledCount) couldn't be scheduled due to time constraints."
-                }
-                
+
+                // Generate detailed summary
+                schedulingResultMessage = generateSchedulingSummary(
+                    totalTasks: tasksToSchedule.count,
+                    scheduledSlots: response.scheduledSlots,
+                    unscheduledTasks: response.unscheduledTasks,
+                    existingScheduledCount: existingScheduledTasks.count
+                )
+
                 showSchedulingResult = true
             }
         }
+    }
+
+    // MARK: - Scheduling Summary
+
+    private func generateSchedulingSummary(
+        totalTasks: Int,
+        scheduledSlots: [ScheduledSlot],
+        unscheduledTasks: [UnscheduledTask],
+        existingScheduledCount: Int
+    ) -> String {
+        let scheduledCount = scheduledSlots.count
+        let unscheduledCount = unscheduledTasks.count
+
+        var summary = ""
+
+        // Header
+        if unscheduledCount == 0 {
+            summary += "✅ AI Scheduling Complete!\n\n"
+        } else {
+            summary += "⚠️ AI Scheduling Partial\n\n"
+        }
+
+        // Stats
+        summary += "📊 Summary:\n"
+        summary += "• \(scheduledCount) task\(scheduledCount == 1 ? "" : "s") scheduled\n"
+
+        if unscheduledCount > 0 {
+            summary += "• \(unscheduledCount) task\(unscheduledCount == 1 ? "" : "s") couldn't fit\n"
+        }
+
+        if existingScheduledCount > 0 {
+            summary += "• \(existingScheduledCount) existing task\(existingScheduledCount == 1 ? "" : "s") preserved\n"
+        }
+
+        // Time range if any tasks were scheduled
+        if scheduledCount > 0, let firstSlot = scheduledSlots.min(by: { $0.scheduledStart < $1.scheduledStart }),
+           let lastSlot = scheduledSlots.max(by: { $0.scheduledStart < $1.scheduledStart }) {
+
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "MMM d"
+
+            let startDate = dateFormatter.string(from: firstSlot.scheduledStart)
+            let endDate = dateFormatter.string(from: lastSlot.scheduledStart)
+
+            summary += "\n📅 Scheduled from \(startDate)"
+            if startDate != endDate {
+                summary += " to \(endDate)"
+            }
+        }
+
+        // Show reasons for unscheduled tasks
+        if unscheduledCount > 0 && !unscheduledTasks.isEmpty {
+            summary += "\n\n❌ Couldn't schedule:\n"
+            for unscheduledTask in unscheduledTasks.prefix(3) {
+                // Find the task title
+                if let task = tasks.first(where: { $0.id == unscheduledTask.taskId }) {
+                    summary += "• \(task.title): \(unscheduledTask.reason)\n"
+                }
+            }
+            if unscheduledTasks.count > 3 {
+                summary += "• ...and \(unscheduledTasks.count - 3) more\n"
+            }
+        }
+
+        // Tip if some tasks couldn't be scheduled
+        if unscheduledCount > 0 {
+            summary += "\n💡 Tip: Try adjusting work hours or reducing task durations to fit all tasks."
+        }
+
+        return summary
     }
     
     // MARK: - Formatting Helpers
@@ -405,10 +499,33 @@ struct TaskListView: View {
     
     private func formatScheduledTime(_ date: Date?) -> String? {
         guard let date = date else { return nil }
-        
+
         let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm a"
-        return formatter.string(from: date)
+        let calendar = Calendar.current
+
+        // Check if the date is today
+        if calendar.isDateInToday(date) {
+            formatter.dateFormat = "h:mm a"
+            return "Today at \(formatter.string(from: date))"
+        }
+        // Check if the date is tomorrow
+        else if calendar.isDateInTomorrow(date) {
+            formatter.dateFormat = "h:mm a"
+            return "Tomorrow at \(formatter.string(from: date))"
+        }
+        // Check if the date is within the next 7 days
+        else if let daysFromNow = calendar.dateComponents([.day], from: Date(), to: date).day,
+                daysFromNow >= 0 && daysFromNow < 7 {
+            let dayFormatter = DateFormatter()
+            dayFormatter.dateFormat = "EEEE" // Day name
+            formatter.dateFormat = "h:mm a"
+            return "\(dayFormatter.string(from: date)) at \(formatter.string(from: date))"
+        }
+        // For dates further out, show full date
+        else {
+            formatter.dateFormat = "MMM d, h:mm a"
+            return formatter.string(from: date)
+        }
     }
 }
 

@@ -167,8 +167,25 @@ struct AddTaskView: View {
     
     // MARK: - Actions
     private func saveTask() {
-        // TODO: Connect to data model
-        // For now, just dismiss
+        let newTask = TaskItem(
+            title: title,
+            details: details.isEmpty ? nil : details,
+            durationMinutes: durationMinutes,
+            priority: priority,
+            scheduledStart: isFixed ? fixedDate : nil,
+            scheduledEnd: isFixed && fixedDate != nil ? fixedDate!.addingTimeInterval(TimeInterval(durationMinutes * 60)) : nil,
+            isFixed: isFixed,
+            recurrence: hasRecurrence ? recurrence.rawValue : nil
+        )
+
+        modelContext.insert(newTask)
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("Error saving task: \(error.localizedDescription)")
+        }
+
         dismiss()
     }
 }

@@ -16,6 +16,7 @@ struct CalendarView: View {
     @State private var currentMonth = Date()
     @State private var showAddTask = false
     @State private var taskDateToCreate: Date?
+    @State private var selectedTask: TaskItem?
     
     var body: some View {
         NavigationStack {
@@ -56,6 +57,9 @@ struct CalendarView: View {
                 if let date = taskDateToCreate {
                     QuickAddTaskView(scheduledDate: date)
                 }
+            }
+            .sheet(item: $selectedTask) { task in
+                SingleTaskView(task: task)
             }
         }
     }
@@ -152,7 +156,9 @@ struct CalendarView: View {
                 emptyScheduleView
             } else {
                 ForEach(tasksForSelectedDate) { task in
-                    ScheduledTaskCard(task: task)
+                    ScheduledTaskCard(task: task) {
+                        selectedTask = task
+                    }
                 }
             }
         }
@@ -337,52 +343,61 @@ struct DayCell: View {
 // MARK: - Scheduled Task Card
 struct ScheduledTaskCard: View {
     let task: TaskItem
-    
+    let onTap: () -> Void
+
     var body: some View {
-        HStack(spacing: AppSpacing.small) {
-            // Time Indicator
-            if let startTime = task.scheduledStart, let endTime = task.scheduledEnd {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(timeString(startTime))
+        Button(action: onTap) {
+            HStack(spacing: AppSpacing.small) {
+                // Time Indicator
+                if let startTime = task.scheduledStart, let endTime = task.scheduledEnd {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(timeString(startTime))
+                            .font(AppTypography.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primaryBlue)
+
+                        Text(timeString(endTime))
+                            .font(AppTypography.caption2)
+                            .foregroundColor(.textSecondary)
+                    }
+                    .frame(width: 60, alignment: .leading)
+                }
+
+                // Color Bar
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(priorityColor(task.priority))
+                    .frame(width: 3)
+
+                // Task Info
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(task.title)
+                        .font(AppTypography.body)
+                        .fontWeight(.medium)
+                        .foregroundColor(.textPrimary)
+
+                    Text(durationText(for: task))
                         .font(AppTypography.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primaryBlue)
-                    
-                    Text(timeString(endTime))
-                        .font(AppTypography.caption2)
                         .foregroundColor(.textSecondary)
                 }
-                .frame(width: 60, alignment: .leading)
+
+                Spacer()
+
+                // Status Indicator
+                if task.isCompleted {
+                    Image(systemName: AppIcons.complete)
+                        .foregroundColor(.accentGreen)
+                }
+
+                // Chevron indicator
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12))
+                    .foregroundColor(.textTertiary)
             }
-            
-            // Color Bar
-            RoundedRectangle(cornerRadius: 2)
-                .fill(priorityColor(task.priority))
-                .frame(width: 3)
-            
-            // Task Info
-            VStack(alignment: .leading, spacing: 4) {
-                Text(task.title)
-                    .font(AppTypography.body)
-                    .fontWeight(.medium)
-                    .foregroundColor(.textPrimary)
-                
-                Text(durationText(for: task))
-                    .font(AppTypography.caption)
-                    .foregroundColor(.textSecondary)
-            }
-            
-            Spacer()
-            
-            // Status Indicator
-            if task.isCompleted {
-                Image(systemName: AppIcons.complete)
-                    .foregroundColor(.accentGreen)
-            }
+            .padding(AppSpacing.small)
+            .background(Color.adaptiveSecondaryBackground)
+            .cornerRadius(AppCornerRadius.small)
         }
-        .padding(AppSpacing.small)
-        .background(Color.adaptiveSecondaryBackground)
-        .cornerRadius(AppCornerRadius.small)
+        .buttonStyle(PlainButtonStyle())
     }
     
     private func timeString(_ date: Date) -> String {

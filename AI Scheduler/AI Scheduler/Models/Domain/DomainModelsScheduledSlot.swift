@@ -48,11 +48,18 @@ extension ScheduledSlot {
         case scheduledEnd
     }
     
-    /// Custom decoder to handle ISO8601 date strings
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
-        id = try container.decode(UUID.self, forKey: .id)
+        // Try to decode as UUID, or if it's not a valid UUID, generate a new one
+        if let idString = try? container.decode(String.self, forKey: .id),
+           let uuid = UUID(uuidString: idString) {
+            id = uuid
+        } else {
+            // If it's not a UUID string, fallback: generate a new UUID
+            id = UUID()
+        }
+        
         taskId = try container.decode(UUID.self, forKey: .taskId)
         
         // Decode dates from ISO8601 strings
@@ -77,18 +84,5 @@ extension ScheduledSlot {
             )
         }
         scheduledEnd = end
-    }
-    
-    /// Custom encoder to output ISO8601 date strings
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        
-        try container.encode(id, forKey: .id)
-        try container.encode(taskId, forKey: .taskId)
-        
-        // Encode dates as ISO8601 strings
-        let formatter = ISO8601DateFormatter()
-        try container.encode(formatter.string(from: scheduledStart), forKey: .scheduledStart)
-        try container.encode(formatter.string(from: scheduledEnd), forKey: .scheduledEnd)
     }
 }
