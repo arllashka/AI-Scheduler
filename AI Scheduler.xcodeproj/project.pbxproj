@@ -29,6 +29,23 @@
 		3B8F2E0F2EE10FD500329DC5 /* AI SchedulerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "AI SchedulerUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		3B8F2E582EE1189C00329DC5 /* Exceptions for "AI SchedulerTests" folder in "AI Scheduler" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				TestsSchedulerServiceTests.swift,
+			);
+			target = 3B8F2DF52EE10FD400329DC5 /* AI Scheduler */;
+		};
+		3B8F2E592EE1189C00329DC5 /* Exceptions for "AI SchedulerTests" folder in "AI SchedulerTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				TestsSchedulerServiceTests.swift,
+			);
+			target = 3B8F2E042EE10FD500329DC5 /* AI SchedulerTests */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		3B8F2DF82EE10FD400329DC5 /* AI Scheduler */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -37,6 +54,10 @@
 		};
 		3B8F2E082EE10FD500329DC5 /* AI SchedulerTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				3B8F2E582EE1189C00329DC5 /* Exceptions for "AI SchedulerTests" folder in "AI Scheduler" target */,
+				3B8F2E592EE1189C00329DC5 /* Exceptions for "AI SchedulerTests" folder in "AI SchedulerTests" target */,
+			);
 			path = "AI SchedulerTests";
 			sourceTree = "<group>";
 		};
