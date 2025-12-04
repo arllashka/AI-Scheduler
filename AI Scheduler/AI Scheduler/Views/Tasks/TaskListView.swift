@@ -6,15 +6,22 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct TaskListView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \TaskItem.priority, order: .reverse) private var tasks: [TaskItem]
+    
     @State private var searchText = ""
     @State private var showAddTask = false
     @State private var showFilters = false
     @State private var selectedFilter: TaskFilter = .all
     
-    // Mock data for UI preview
-    @State private var tasks: [MockTask] = MockTask.sampleTasks
+    // AI Scheduling
+    @StateObject private var schedulerCoordinator = SchedulerCoordinator()
+    @StateObject private var userPreferences = UserPreferences.shared
+    @State private var showSchedulingResult = false
+    @State private var schedulingResultMessage = ""
     
     var body: some View {
         NavigationStack {
@@ -75,6 +82,30 @@ struct TaskListView: View {
             .sheet(isPresented: $showFilters) {
                 FilterView(selectedFilter: $selectedFilter)
             }
+            .alert(schedulingResultMessage, isPresented: $showSchedulingResult) {
+                Button("OK", role: .cancel) { }
+            }
+            .overlay {
+                if schedulerCoordinator.isLoading {
+                    ZStack {
+                        Color.black.opacity(0.3)
+                            .ignoresSafeArea()
+                        
+                        VStack(spacing: AppSpacing.medium) {
+                            ProgressView()
+                                .scaleEffect(1.5)
+                                .tint(.white)
+                            
+                            Text("AI is scheduling your tasks...")
+                                .font(AppTypography.body)
+                                .foregroundColor(.white)
+                        }
+                        .padding(AppSpacing.xlarge)
+                        .background(.ultraThinMaterial)
+                        .cornerRadius(AppCornerRadius.medium)
+                    }
+                }
+            }
         }
     }
     
@@ -83,21 +114,21 @@ struct TaskListView: View {
         HStack(spacing: AppSpacing.small) {
             StatsCard(
                 icon: AppIcons.tasks,
-                value: "\(tasks.filter { !$0.isCompleted }.count)",
+                value: "\(activeTasks.count)",
                 label: "Active",
                 color: .primaryBlue
             )
             
             StatsCard(
                 icon: AppIcons.complete,
-                value: "\(tasks.filter { $0.isCompleted }.count)",
+                value: "\(completedTasksCount)",
                 label: "Completed",
                 color: .accentGreen
             )
             
             StatsCard(
                 icon: AppIcons.schedule,
-                value: "\(tasks.filter { $0.scheduledTime != nil }.count)",
+                value: "\(scheduledTasksCount)",
                 label: "Scheduled",
                 color: .accentPurple
             )
@@ -108,7 +139,7 @@ struct TaskListView: View {
     // MARK: - AI Schedule Button
     private var aiScheduleButton: some View {
         Button {
-            // Schedule action
+            scheduleTasksWithAI()
         } label: {
             HStack {
                 Image(systemName: AppIcons.aiSchedule)
@@ -143,6 +174,8 @@ struct TaskListView: View {
                 y: 4
             )
         }
+        .disabled(schedulerCoordinator.isLoading || unscheduledActiveTasks.isEmpty)
+        .opacity((schedulerCoordinator.isLoading || unscheduledActiveTasks.isEmpty) ? 0.6 : 1.0)
     }
     
     // MARK: - Filter Chips
@@ -172,12 +205,12 @@ struct TaskListView: View {
                     ForEach(scheduledTasks) { task in
                         TaskCard(
                             title: task.title,
-                            duration: task.durationText,
+                            duration: formatDuration(task.durationMinutes),
                             priority: task.priority,
                             isCompleted: task.isCompleted,
-                            scheduledTime: task.scheduledTime
+                            scheduledTime: formatScheduledTime(task.scheduledStart)
                         ) {
-                            // Task tapped
+                            // Task tapped - could navigate to detail
                         } onComplete: {
                             toggleTaskCompletion(task)
                         }
@@ -193,7 +226,7 @@ struct TaskListView: View {
                     ForEach(unscheduledTasks) { task in
                         TaskCard(
                             title: task.title,
-                            duration: task.durationText,
+                            duration: formatDuration(task.durationMinutes),
                             priority: task.priority,
                             isCompleted: task.isCompleted,
                             scheduledTime: nil
@@ -214,10 +247,10 @@ struct TaskListView: View {
                     ForEach(completedTasks) { task in
                         TaskCard(
                             title: task.title,
-                            duration: task.durationText,
+                            duration: formatDuration(task.durationMinutes),
                             priority: task.priority,
                             isCompleted: task.isCompleted,
-                            scheduledTime: task.scheduledTime
+                            scheduledTime: formatScheduledTime(task.scheduledStart)
                         ) {
                             // Task tapped
                         } onComplete: {
@@ -230,7 +263,24 @@ struct TaskListView: View {
     }
     
     // MARK: - Computed Properties
-    private var filteredTasks: [MockTask] {
+    
+    private var activeTasks: [TaskItem] {
+        tasks.filter { !$0.isCompleted }
+    }
+    
+    private var completedTasksCount: Int {
+        tasks.filter { $0.isCompleted }.count
+    }
+    
+    private var scheduledTasksCount: Int {
+        tasks.filter { $0.scheduledStart != nil && !$0.isCompleted }.count
+    }
+    
+    private var unscheduledActiveTasks: [TaskItem] {
+        tasks.filter { $0.scheduledStart == nil && !$0.isCompleted }
+    }
+    
+    private var filteredTasks: [TaskItem] {
         var result = tasks
         
         // Apply filter
@@ -238,9 +288,9 @@ struct TaskListView: View {
         case .all:
             break
         case .scheduled:
-            result = result.filter { $0.scheduledTime != nil }
+            result = result.filter { $0.scheduledStart != nil }
         case .unscheduled:
-            result = result.filter { $0.scheduledTime == nil && !$0.isCompleted }
+            result = result.filter { $0.scheduledStart == nil && !$0.isCompleted }
         case .completed:
             result = result.filter { $0.isCompleted }
         case .highPriority:
@@ -249,29 +299,116 @@ struct TaskListView: View {
         
         // Apply search
         if !searchText.isEmpty {
-            result = result.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
+            result = result.filter { 
+                $0.title.localizedCaseInsensitiveContains(searchText) ||
+                ($0.details?.localizedCaseInsensitiveContains(searchText) ?? false)
+            }
         }
         
         return result
     }
     
-    private var scheduledTasks: [MockTask] {
-        filteredTasks.filter { $0.scheduledTime != nil && !$0.isCompleted }
+    private var scheduledTasks: [TaskItem] {
+        filteredTasks.filter { $0.scheduledStart != nil && !$0.isCompleted }
+            .sorted { ($0.scheduledStart ?? Date.distantPast) < ($1.scheduledStart ?? Date.distantPast) }
     }
     
-    private var unscheduledTasks: [MockTask] {
-        filteredTasks.filter { $0.scheduledTime == nil && !$0.isCompleted }
+    private var unscheduledTasks: [TaskItem] {
+        filteredTasks.filter { $0.scheduledStart == nil && !$0.isCompleted }
+            .sorted { $0.priority > $1.priority }
     }
     
-    private var completedTasks: [MockTask] {
+    private var completedTasks: [TaskItem] {
         filteredTasks.filter { $0.isCompleted }
+            .sorted { $0.updatedAt > $1.updatedAt }
     }
     
     // MARK: - Actions
-    private func toggleTaskCompletion(_ task: MockTask) {
-        if let index = tasks.firstIndex(where: { $0.id == task.id }) {
-            tasks[index].isCompleted.toggle()
+    
+    private func toggleTaskCompletion(_ task: TaskItem) {
+        task.isCompleted.toggle()
+        task.updatedAt = Date()
+        try? modelContext.save()
+    }
+    
+    private func scheduleTasksWithAI() {
+        // Get unscheduled tasks
+        let tasksToSchedule = unscheduledActiveTasks
+        
+        guard !tasksToSchedule.isEmpty else {
+            schedulingResultMessage = "No tasks to schedule!"
+            showSchedulingResult = true
+            return
         }
+        
+        Task {
+            // Generate available slots
+            let availableSlots = AvailableSlotGenerator.generateSlots(
+                forNextDays: 7,
+                workHoursStart: userPreferences.workHoursStart,
+                workHoursEnd: userPreferences.workHoursEnd,
+                existingTasks: tasks.filter { $0.scheduledStart != nil && !$0.isCompleted }
+            )
+            
+            guard !availableSlots.isEmpty else {
+                schedulingResultMessage = "No available time slots found. Please check your work hours settings."
+                showSchedulingResult = true
+                return
+            }
+            
+            // Call AI scheduler
+            await schedulerCoordinator.scheduleTasks(
+                from: tasksToSchedule,
+                availableSlots: availableSlots,
+                constraints: userPreferences.timeConstraints
+            )
+            
+            // Handle result
+            if let error = schedulerCoordinator.lastError {
+                schedulingResultMessage = "Scheduling failed: \(error.localizedDescription)"
+                showSchedulingResult = true
+            } else if let response = schedulerCoordinator.lastResponse {
+                // Apply scheduled slots to tasks
+                schedulerCoordinator.applySchedule(to: tasksToSchedule, from: response)
+                
+                // Save changes
+                try? modelContext.save()
+                
+                // Show success message
+                let scheduledCount = response.scheduledSlots.count
+                let unscheduledCount = response.unscheduledTasks.count
+                
+                if unscheduledCount == 0 {
+                    schedulingResultMessage = "✅ Successfully scheduled \(scheduledCount) task\(scheduledCount == 1 ? "" : "s")!"
+                } else {
+                    schedulingResultMessage = "⚠️ Scheduled \(scheduledCount) task\(scheduledCount == 1 ? "" : "s"), but \(unscheduledCount) couldn't be scheduled due to time constraints."
+                }
+                
+                showSchedulingResult = true
+            }
+        }
+    }
+    
+    // MARK: - Formatting Helpers
+    
+    private func formatDuration(_ minutes: Int) -> String {
+        if minutes >= 60 {
+            let hours = minutes / 60
+            let remainingMinutes = minutes % 60
+            if remainingMinutes == 0 {
+                return "\(hours)h"
+            }
+            return "\(hours)h \(remainingMinutes)m"
+        }
+        return "\(minutes)m"
+    }
+    
+    private func formatScheduledTime(_ date: Date?) -> String? {
+        guard let date = date else { return nil }
+        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter.string(from: date)
     }
 }
 
@@ -333,7 +470,7 @@ struct FilterView: View {
     }
 }
 
-// MARK: - Mock Data
+// MARK: - Task Filter
 enum TaskFilter: String, CaseIterable {
     case all = "All"
     case scheduled = "Scheduled"
@@ -342,36 +479,7 @@ enum TaskFilter: String, CaseIterable {
     case highPriority = "High Priority"
 }
 
-struct MockTask: Identifiable {
-    let id = UUID()
-    var title: String
-    var durationMinutes: Int
-    var priority: Int
-    var isCompleted: Bool
-    var scheduledTime: String?
-    
-    var durationText: String {
-        if durationMinutes >= 60 {
-            let hours = durationMinutes / 60
-            let minutes = durationMinutes % 60
-            if minutes == 0 {
-                return "\(hours)h"
-            }
-            return "\(hours)h \(minutes)m"
-        }
-        return "\(durationMinutes)m"
-    }
-    
-    static let sampleTasks: [MockTask] = [
-        MockTask(title: "Complete project proposal", durationMinutes: 120, priority: 8, isCompleted: false, scheduledTime: "9:00 AM"),
-        MockTask(title: "Team meeting", durationMinutes: 60, priority: 7, isCompleted: false, scheduledTime: "2:00 PM"),
-        MockTask(title: "Review code changes", durationMinutes: 45, priority: 6, isCompleted: false, scheduledTime: nil),
-        MockTask(title: "Update documentation", durationMinutes: 30, priority: 4, isCompleted: false, scheduledTime: nil),
-        MockTask(title: "Email clients", durationMinutes: 30, priority: 5, isCompleted: true, scheduledTime: "10:00 AM"),
-        MockTask(title: "Lunch break", durationMinutes: 60, priority: 2, isCompleted: true, scheduledTime: "12:00 PM"),
-    ]
-}
-
 #Preview {
     TaskListView()
+        .modelContainer(for: TaskItem.self, inMemory: true)
 }

@@ -7,34 +7,29 @@
 
 import Foundation
 
-/// Configuration for API communication with Gemini
+/// Configuration for API communication with OpenAI ChatGPT
 struct APIConfiguration {
-    /// Gemini API key from environment or configuration
+    /// Company's OpenAI API key (hardcoded for production use)
+    /// NOTE: In production, consider using environment-specific configuration
+    private static let companyAPIKey = ""
+    
+    /// OpenAI API key - returns company key
+    @MainActor
     static var apiKey: String {
-        // In production, load from secure storage or environment
-        // For now, return from Info.plist or environment variable
-        if let key = Bundle.main.object(forInfoDictionaryKey: "GEMINI_API_KEY") as? String {
-            return key
-        }
-        
-        // Fallback to environment variable (useful for testing)
-        if let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"] {
-            return key
-        }
-        
-        // For development, you can hardcode it here (not recommended for production)
-        return ""
+        // Return company's hardcoded key
+        // This ensures the app always works without user configuration
+        return companyAPIKey
     }
     
-    /// Base URL for Gemini API
-    static let baseURL = "https://generativelanguage.googleapis.com/v1beta"
+    /// Base URL for OpenAI API
+    static let baseURL = "https://api.openai.com/v1"
     
     /// Model to use for scheduling
-    static let modelName = "gemini-2.0-flash-exp"
+    static let modelName = "gpt-4o"
     
-    /// Full endpoint URL for generating content
-    static var generateContentURL: URL? {
-        URL(string: "\(baseURL)/models/\(modelName):generateContent")
+    /// Full endpoint URL for chat completions
+    static var chatCompletionsURL: URL? {
+        URL(string: "\(baseURL)/chat/completions")
     }
     
     /// Request timeout interval
@@ -66,7 +61,7 @@ enum APIError: LocalizedError {
         case .decodingError(let error):
             return "Failed to decode response: \(error.localizedDescription)"
         case .apiKeyMissing:
-            return "Gemini API key is missing. Please configure it in your app settings."
+            return "OpenAI API key is missing. Please configure it in your app settings."
         case .rateLimitExceeded:
             return "API rate limit exceeded. Please try again later."
         case .invalidRequest(let message):

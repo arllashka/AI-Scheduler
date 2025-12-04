@@ -4,4 +4,16 @@
    <FileRef
       location = "self:">
    </FileRef>
+   <FileRef
+      location = "group:UtilsAvailableSlotGenerator.swift">
+   </FileRef>
+   <FileRef
+      location = "group:DomainModelsUserPreferences.swift">
+   </FileRef>
+   <FileRef
+      location = "group:QUICK_START.md">
+   </FileRef>
+   <FileRef
+      location = "group:Info.plist">
+   </FileRef>
 </Workspace>

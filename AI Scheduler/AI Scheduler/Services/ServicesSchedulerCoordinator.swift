@@ -47,9 +47,9 @@ final class SchedulerCoordinator: ObservableObject {
         self.service = service
     }
     
-    /// Initialize with default Gemini service
+    /// Initialize with default OpenAI service
     convenience init() {
-        self.init(service: GeminiSchedulerService())
+        self.init(service: OpenAISchedulerService())
     }
     
     /// Initialize with mock service for testing

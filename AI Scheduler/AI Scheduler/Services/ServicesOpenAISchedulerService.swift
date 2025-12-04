@@ -1,5 +1,5 @@
 //
-//  GeminiSchedulerService.swift
+//  OpenAISchedulerService.swift
 //  AI Scheduler
 //
 //  Created by Arlan Kalin on 04.12.2025.
@@ -8,9 +8,9 @@
 import Foundation
 import Combine
 
-/// Service for communicating with Gemini API to schedule tasks
+/// Service for communicating with OpenAI ChatGPT API to schedule tasks
 @MainActor
-final class GeminiSchedulerService: ObservableObject {
+final class OpenAISchedulerService: ObservableObject {
     
     // MARK: - Published Properties
     
@@ -40,7 +40,7 @@ final class GeminiSchedulerService: ObservableObject {
     
     // MARK: - Public Methods
     
-    /// Schedule tasks using Gemini API
+    /// Schedule tasks using OpenAI ChatGPT API
     /// - Parameters:
     ///   - tasks: Array of tasks to schedule
     ///   - availableSlots: Available time slots for scheduling
@@ -72,12 +72,12 @@ final class GeminiSchedulerService: ObservableObject {
             timeConstraints: constraints
         )
         
-        // Build prompt for Gemini
+        // Build prompt for ChatGPT
         let prompt = try buildSchedulingPrompt(from: request)
         
-        // Call Gemini API
+        // Call OpenAI API
         do {
-            let response = try await callGeminiAPI(with: prompt)
+            let response = try await callOpenAIAPI(with: prompt)
             return try parseSchedulerResponse(from: response)
         } catch {
             let apiError = error as? APIError ?? .networkError(error)
@@ -88,7 +88,7 @@ final class GeminiSchedulerService: ObservableObject {
     
     // MARK: - Private Methods
     
-    /// Build the scheduling prompt for Gemini
+    /// Build the scheduling prompt for ChatGPT
     private func buildSchedulingPrompt(from request: SchedulerRequest) throws -> String {
         // Convert request to JSON string
         let requestData = try jsonEncoder.encode(request)
@@ -135,7 +135,7 @@ final class GeminiSchedulerService: ObservableObject {
             "scheduledCount": number,
             "unscheduledCount": number,
             "processingTime": number,
-            "aiModel": "gemini-2.0-flash-exp",
+            "aiModel": "gpt-4o",
             "timestamp": "ISO8601 datetime"
           }
         }
@@ -144,45 +144,37 @@ final class GeminiSchedulerService: ObservableObject {
         """
     }
     
-    /// Call Gemini API with the prompt
-    private func callGeminiAPI(with prompt: String) async throws -> String {
-        guard let url = APIConfiguration.generateContentURL else {
+    /// Call OpenAI API with the prompt
+    private func callOpenAIAPI(with prompt: String) async throws -> String {
+        guard let url = APIConfiguration.chatCompletionsURL else {
             throw APIError.invalidURL
         }
         
-        // Build URL with API key
-        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        components?.queryItems = [
-            URLQueryItem(name: "key", value: APIConfiguration.apiKey)
-        ]
-        
-        guard let finalURL = components?.url else {
-            throw APIError.invalidURL
-        }
-        
-        // Build request body
+        // Build request body for OpenAI Chat Completions API
         let requestBody: [String: Any] = [
-            "contents": [
+            "model": APIConfiguration.modelName,
+            "messages": [
                 [
-                    "parts": [
-                        ["text": prompt]
-                    ]
+                    "role": "system",
+                    "content": "You are an expert AI task scheduler. Always respond with valid JSON only, no additional text."
+                ],
+                [
+                    "role": "user",
+                    "content": prompt
                 ]
             ],
-            "generationConfig": [
-                "temperature": 0.2,
-                "topK": 40,
-                "topP": 0.95,
-                "maxOutputTokens": 8192,
-            ]
+            "temperature": 0.2,
+            "max_tokens": 4096,
+            "response_format": ["type": "json_object"]
         ]
         
         let requestData = try JSONSerialization.data(withJSONObject: requestBody)
         
         // Create URL request
-        var urlRequest = URLRequest(url: finalURL)
+        var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("Bearer \(APIConfiguration.apiKey)", forHTTPHeaderField: "Authorization")
         urlRequest.httpBody = requestData
         urlRequest.timeoutInterval = APIConfiguration.timeoutInterval
         
@@ -204,21 +196,19 @@ final class GeminiSchedulerService: ObservableObject {
             throw APIError.serverError(httpResponse.statusCode, errorMessage)
         }
         
-        // Parse Gemini response
+        // Parse OpenAI response
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let candidates = json["candidates"] as? [[String: Any]],
-              let firstCandidate = candidates.first,
-              let content = firstCandidate["content"] as? [String: Any],
-              let parts = content["parts"] as? [[String: Any]],
-              let firstPart = parts.first,
-              let text = firstPart["text"] as? String else {
+              let choices = json["choices"] as? [[String: Any]],
+              let firstChoice = choices.first,
+              let message = firstChoice["message"] as? [String: Any],
+              let content = message["content"] as? String else {
             throw APIError.invalidResponse
         }
         
-        return text
+        return content
     }
     
-    /// Parse the scheduler response from Gemini's text output
+    /// Parse the scheduler response from ChatGPT's output
     private func parseSchedulerResponse(from text: String) throws -> SchedulerResponse {
         // Extract JSON from text (in case there's extra text)
         let jsonText = extractJSON(from: text)
@@ -247,7 +237,7 @@ final class GeminiSchedulerService: ObservableObject {
 
 // MARK: - Convenience Methods
 
-extension GeminiSchedulerService: SchedulerServiceProtocol {
+extension OpenAISchedulerService: SchedulerServiceProtocol {
     /// Schedule tasks from TaskItem models
     func scheduleTasks(
         from taskItems: [TaskItem],

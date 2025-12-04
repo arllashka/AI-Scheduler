@@ -6,14 +6,16 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct CalendarView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query private var tasks: [TaskItem]
+    
     @State private var selectedDate = Date()
     @State private var currentMonth = Date()
-    @State private var showDayView = false
-    
-    // Mock scheduled tasks
-    @State private var scheduledTasks: [ScheduledMockTask] = ScheduledMockTask.sampleTasks
+    @State private var showAddTask = false
+    @State private var taskDateToCreate: Date?
     
     var body: some View {
         NavigationStack {
@@ -30,6 +32,16 @@ struct CalendarView: View {
             }
             .navigationTitle("Calendar")
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        taskDateToCreate = selectedDate
+                        showAddTask = true
+                    } label: {
+                        Image(systemName: AppIcons.add)
+                            .foregroundColor(.primaryBlue)
+                    }
+                }
+                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         currentMonth = Date()
@@ -38,6 +50,11 @@ struct CalendarView: View {
                         Text("Today")
                             .foregroundColor(.primaryBlue)
                     }
+                }
+            }
+            .sheet(isPresented: $showAddTask) {
+                if let date = taskDateToCreate {
+                    QuickAddTaskView(scheduledDate: date)
                 }
             }
         }
@@ -110,11 +127,26 @@ struct CalendarView: View {
     // MARK: - Today's Schedule
     private var todaySchedule: some View {
         VStack(alignment: .leading, spacing: AppSpacing.small) {
-            SectionHeader(
-                dateHeaderString,
-                actionTitle: "Day View",
-                action: { showDayView = true }
-            )
+            HStack {
+                Text(dateHeaderString)
+                    .font(AppTypography.title3)
+                    .foregroundColor(.textPrimary)
+                
+                Spacer()
+                
+                Button {
+                    taskDateToCreate = selectedDate
+                    showAddTask = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: AppIcons.add)
+                        Text("Add")
+                    }
+                    .font(AppTypography.callout)
+                    .foregroundColor(.primaryBlue)
+                }
+            }
+            .padding(.horizontal, AppSpacing.medium)
             
             if tasksForSelectedDate.isEmpty {
                 emptyScheduleView
@@ -136,8 +168,21 @@ struct CalendarView: View {
                 .font(AppTypography.body)
                 .foregroundColor(.textSecondary)
             
-            SecondaryButton("Schedule Tasks", icon: AppIcons.aiSchedule) {
-                // Schedule action
+            Button {
+                taskDateToCreate = selectedDate
+                showAddTask = true
+            } label: {
+                HStack {
+                    Image(systemName: AppIcons.add)
+                    Text("Add Task for \(selectedDateString)")
+                }
+                .font(AppTypography.callout)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+                .padding(.horizontal, AppSpacing.medium)
+                .padding(.vertical, AppSpacing.small)
+                .background(Color.primaryBlue)
+                .cornerRadius(AppCornerRadius.medium)
             }
         }
         .frame(maxWidth: .infinity)
@@ -161,6 +206,19 @@ struct CalendarView: View {
         } else {
             let formatter = DateFormatter()
             formatter.dateFormat = "EEEE, MMM d"
+            return formatter.string(from: selectedDate)
+        }
+    }
+    
+    private var selectedDateString: String {
+        if Calendar.current.isDateInToday(selectedDate) {
+            return "Today"
+        } else if Calendar.current.isDateInTomorrow(selectedDate) {
+            return "Tomorrow"
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .none
             return formatter.string(from: selectedDate)
         }
     }
@@ -190,16 +248,23 @@ struct CalendarView: View {
         return result
     }
     
-    private var tasksForSelectedDate: [ScheduledMockTask] {
-        scheduledTasks.filter { task in
-            Calendar.current.isDate(task.startTime, inSameDayAs: selectedDate)
-        }.sorted { $0.startTime < $1.startTime }
+    private var tasksForSelectedDate: [TaskItem] {
+        tasks.filter { task in
+            guard let scheduledStart = task.scheduledStart else { return false }
+            return Calendar.current.isDate(scheduledStart, inSameDayAs: selectedDate)
+        }.sorted { task1, task2 in
+            guard let start1 = task1.scheduledStart, let start2 = task2.scheduledStart else {
+                return false
+            }
+            return start1 < start2
+        }
     }
     
     // MARK: - Helper Functions
     private func hasTasksOnDate(_ date: Date) -> Bool {
-        scheduledTasks.contains { task in
-            Calendar.current.isDate(task.startTime, inSameDayAs: date)
+        tasks.contains { task in
+            guard let scheduledStart = task.scheduledStart else { return false }
+            return Calendar.current.isDate(scheduledStart, inSameDayAs: date)
         }
     }
     
@@ -271,22 +336,24 @@ struct DayCell: View {
 
 // MARK: - Scheduled Task Card
 struct ScheduledTaskCard: View {
-    let task: ScheduledMockTask
+    let task: TaskItem
     
     var body: some View {
         HStack(spacing: AppSpacing.small) {
             // Time Indicator
-            VStack(alignment: .leading, spacing: 2) {
-                Text(timeString(task.startTime))
-                    .font(AppTypography.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.primaryBlue)
-                
-                Text(timeString(task.endTime))
-                    .font(AppTypography.caption2)
-                    .foregroundColor(.textSecondary)
+            if let startTime = task.scheduledStart, let endTime = task.scheduledEnd {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(timeString(startTime))
+                        .font(AppTypography.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primaryBlue)
+                    
+                    Text(timeString(endTime))
+                        .font(AppTypography.caption2)
+                        .foregroundColor(.textSecondary)
+                }
+                .frame(width: 60, alignment: .leading)
             }
-            .frame(width: 60, alignment: .leading)
             
             // Color Bar
             RoundedRectangle(cornerRadius: 2)
@@ -300,7 +367,7 @@ struct ScheduledTaskCard: View {
                     .fontWeight(.medium)
                     .foregroundColor(.textPrimary)
                 
-                Text(task.durationText)
+                Text(durationText(for: task))
                     .font(AppTypography.caption)
                     .foregroundColor(.textSecondary)
             }
@@ -324,29 +391,10 @@ struct ScheduledTaskCard: View {
         return formatter.string(from: date)
     }
     
-    private func priorityColor(_ priority: Int) -> Color {
-        switch priority {
-        case 1...3: return .priorityLow
-        case 4...6: return .priorityMedium
-        case 7...9: return .priorityHigh
-        default: return .priorityCritical
-        }
-    }
-}
-
-// MARK: - Mock Data
-struct ScheduledMockTask: Identifiable {
-    let id = UUID()
-    let title: String
-    let startTime: Date
-    let endTime: Date
-    let priority: Int
-    let isCompleted: Bool
-    
-    var durationText: String {
-        let duration = endTime.timeIntervalSince(startTime) / 60
-        let hours = Int(duration) / 60
-        let minutes = Int(duration) % 60
+    private func durationText(for task: TaskItem) -> String {
+        let duration = task.durationMinutes
+        let hours = duration / 60
+        let minutes = duration % 60
         
         if hours > 0 {
             return minutes > 0 ? "\(hours)h \(minutes)m" : "\(hours)h"
@@ -354,41 +402,14 @@ struct ScheduledMockTask: Identifiable {
         return "\(minutes)m"
     }
     
-    static let sampleTasks: [ScheduledMockTask] = {
-        let today = Date()
-        let calendar = Calendar.current
-        
-        return [
-            ScheduledMockTask(
-                title: "Morning standup",
-                startTime: calendar.date(bySettingHour: 9, minute: 0, second: 0, of: today)!,
-                endTime: calendar.date(bySettingHour: 9, minute: 30, second: 0, of: today)!,
-                priority: 5,
-                isCompleted: true
-            ),
-            ScheduledMockTask(
-                title: "Complete project proposal",
-                startTime: calendar.date(bySettingHour: 10, minute: 0, second: 0, of: today)!,
-                endTime: calendar.date(bySettingHour: 12, minute: 0, second: 0, of: today)!,
-                priority: 8,
-                isCompleted: false
-            ),
-            ScheduledMockTask(
-                title: "Lunch break",
-                startTime: calendar.date(bySettingHour: 12, minute: 0, second: 0, of: today)!,
-                endTime: calendar.date(bySettingHour: 13, minute: 0, second: 0, of: today)!,
-                priority: 2,
-                isCompleted: false
-            ),
-            ScheduledMockTask(
-                title: "Team meeting",
-                startTime: calendar.date(bySettingHour: 14, minute: 0, second: 0, of: today)!,
-                endTime: calendar.date(bySettingHour: 15, minute: 0, second: 0, of: today)!,
-                priority: 7,
-                isCompleted: false
-            ),
-        ]
-    }()
+    private func priorityColor(_ priority: Int) -> Color {
+        switch priority {
+        case 1...2: return .priorityLow
+        case 3: return .priorityMedium
+        case 4: return .priorityHigh
+        default: return .priorityCritical
+        }
+    }
 }
 
 // MARK: - Calendar Extension

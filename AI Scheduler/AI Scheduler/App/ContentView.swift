@@ -10,29 +10,36 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @StateObject private var userPreferences = UserPreferences.shared
     @State private var selectedTab = 0
     
     var body: some View {
-        TabView(selection: $selectedTab) {
-            TaskListView()
-                .tabItem {
-                    Label("Tasks", systemImage: AppIcons.tasks)
+        Group {
+            if !userPreferences.onboardingCompleted {
+                OnboardingView()
+            } else {
+                TabView(selection: $selectedTab) {
+                    TaskListView()
+                        .tabItem {
+                            Label("Tasks", systemImage: AppIcons.tasks)
+                        }
+                        .tag(0)
+                    
+                    CalendarView()
+                        .tabItem {
+                            Label("Calendar", systemImage: AppIcons.calendar)
+                        }
+                        .tag(1)
+                    
+                    SettingsView()
+                        .tabItem {
+                            Label("Settings", systemImage: AppIcons.settings)
+                        }
+                        .tag(2)
                 }
-                .tag(0)
-            
-            CalendarView()
-                .tabItem {
-                    Label("Calendar", systemImage: AppIcons.calendar)
-                }
-                .tag(1)
-            
-            SettingsView()
-                .tabItem {
-                    Label("Settings", systemImage: AppIcons.settings)
-                }
-                .tag(2)
+                .tint(.primaryBlue)
+            }
         }
-        .tint(.primaryBlue)
     }
 }
 

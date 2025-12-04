@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftData
 
 /// Sample data for testing and previews
 enum SampleData {

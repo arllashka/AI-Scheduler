@@ -6,58 +6,43 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct SettingsView: View {
-    @State private var apiKey = ""
-    @State private var showApiKeySheet = false
-    @State private var notificationsEnabled = true
-    @State private var workHoursStart = Date()
-    @State private var workHoursEnd = Date()
-    @State private var breakDuration = 60
-    @State private var maxConsecutiveHours = 3
+    @Environment(\.modelContext) private var modelContext
+    @StateObject private var userPreferences = UserPreferences.shared
+    
+    @State private var showingReloadConfirmation = false
+    @State private var showingClearConfirmation = false
+    @State private var workHoursStartDate = Date()
+    @State private var workHoursEndDate = Date()
     
     var body: some View {
         NavigationStack {
             Form {
-                // API Configuration
-                Section {
-                    Button {
-                        showApiKeySheet = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "key.fill")
-                                .foregroundColor(.primaryBlue)
-                            Text("Gemini API Key")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(.textTertiary)
-                        }
-                    }
-                    .foregroundColor(.textPrimary)
-                } header: {
-                    Text("AI Configuration")
-                } footer: {
-                    Text("Configure your Gemini API key for AI-powered scheduling")
-                }
-                
                 // Work Hours
                 Section {
                     DatePicker(
                         "Start Time",
-                        selection: $workHoursStart,
+                        selection: $workHoursStartDate,
                         displayedComponents: .hourAndMinute
                     )
+                    .onChange(of: workHoursStartDate) { _, newValue in
+                        userPreferences.workHoursStart = formatTimeString(from: newValue)
+                    }
                     
                     DatePicker(
                         "End Time",
-                        selection: $workHoursEnd,
+                        selection: $workHoursEndDate,
                         displayedComponents: .hourAndMinute
                     )
+                    .onChange(of: workHoursEndDate) { _, newValue in
+                        userPreferences.workHoursEnd = formatTimeString(from: newValue)
+                    }
                     
-                    Stepper("Break Duration: \(breakDuration) min", value: $breakDuration, in: 0...120, step: 15)
+                    Stepper("Break Duration: \(userPreferences.breakDuration) min", value: $userPreferences.breakDuration, in: 0...120, step: 15)
                     
-                    Stepper("Max Consecutive Hours: \(maxConsecutiveHours)", value: $maxConsecutiveHours, in: 1...8)
+                    Stepper("Max Consecutive Hours: \(userPreferences.maxConsecutiveHours)", value: $userPreferences.maxConsecutiveHours, in: 1...8)
                 } header: {
                     Text("Work Hours")
                 } footer: {
@@ -66,7 +51,7 @@ struct SettingsView: View {
                 
                 // Notifications
                 Section {
-                    Toggle("Task Reminders", isOn: $notificationsEnabled)
+                    Toggle("Task Reminders", isOn: $userPreferences.notificationsEnabled)
                 } header: {
                     Text("Notifications")
                 }
@@ -97,7 +82,7 @@ struct SettingsView: View {
                     }
                     
                     Button(role: .destructive) {
-                        // Clear all data
+                        showingClearConfirmation = true
                     } label: {
                         Label("Clear All Data", systemImage: "trash.fill")
                     }
@@ -128,116 +113,39 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
-            .sheet(isPresented: $showApiKeySheet) {
-                ApiKeySheet(apiKey: $apiKey)
+            .onAppear {
+                loadWorkHours()
             }
         }
     }
-}
-
-// MARK: - API Key Sheet
-struct ApiKeySheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @Binding var apiKey: String
-    @State private var inputKey = ""
     
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: AppSpacing.large) {
-                // Header Icon
-                Image(systemName: AppIcons.aiMagic)
-                    .font(.system(size: 60))
-                    .foregroundColor(.accentPurple)
-                    .padding(.top, AppSpacing.xlarge)
-                
-                // Info Text
-                VStack(spacing: AppSpacing.xsmall) {
-                    Text("Gemini API Key")
-                        .font(AppTypography.title2)
-                        .foregroundColor(.textPrimary)
-                    
-                    Text("Enter your API key to enable AI-powered scheduling")
-                        .font(AppTypography.body)
-                        .foregroundColor(.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, AppSpacing.xlarge)
-                }
-                
-                // Key Input
-                VStack(alignment: .leading, spacing: AppSpacing.xsmall) {
-                    Text("API Key")
-                        .font(AppTypography.subheadline)
-                        .foregroundColor(.textSecondary)
-                    
-                    SecureField("Enter your API key", text: $inputKey)
-                        .textFieldStyle()
-                        .padding(.horizontal, AppSpacing.medium)
-                }
-                .padding(.top, AppSpacing.large)
-                
-                // Instructions
-                VStack(alignment: .leading, spacing: AppSpacing.small) {
-                    Text("How to get an API key:")
-                        .font(AppTypography.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.textPrimary)
-                    
-                    InstructionRow(number: 1, text: "Visit Google AI Studio")
-                    InstructionRow(number: 2, text: "Create a new API key")
-                    InstructionRow(number: 3, text: "Copy and paste it here")
-                    
-                    Link("Open Google AI Studio →", destination: URL(string: "https://makersuite.google.com/app/apikey")!)
-                        .font(AppTypography.callout)
-                        .foregroundColor(.primaryBlue)
-                        .padding(.top, AppSpacing.xsmall)
-                }
-                .padding(AppSpacing.medium)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.adaptiveSecondaryBackground)
-                .cornerRadius(AppCornerRadius.medium)
-                .padding(.horizontal, AppSpacing.medium)
-                
-                Spacer()
-                
-                // Save Button
-                PrimaryButton("Save API Key") {
-                    apiKey = inputKey
-                    dismiss()
-                }
-                .padding(.horizontal, AppSpacing.medium)
-                .disabled(inputKey.isEmpty)
-            }
-            .navigationTitle("API Configuration")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-            }
-        }
+    // MARK: - Helper Methods
+    
+    private func loadWorkHours() {
+        workHoursStartDate = parseTimeString(userPreferences.workHoursStart) ?? Date()
+        workHoursEndDate = parseTimeString(userPreferences.workHoursEnd) ?? Date()
     }
-}
-
-struct InstructionRow: View {
-    let number: Int
-    let text: String
     
-    var body: some View {
-        HStack(spacing: AppSpacing.small) {
-            Text("\(number)")
-                .font(AppTypography.caption)
-                .fontWeight(.bold)
-                .foregroundColor(.white)
-                .frame(width: 24, height: 24)
-                .background(Color.primaryBlue)
-                .clipShape(Circle())
-            
-            Text(text)
-                .font(AppTypography.callout)
-                .foregroundColor(.textSecondary)
+    private func parseTimeString(_ timeString: String) -> Date? {
+        let components = timeString.split(separator: ":")
+        guard components.count == 2,
+              let hour = Int(components[0]),
+              let minute = Int(components[1]) else {
+            return nil
         }
+        
+        var dateComponents = DateComponents()
+        dateComponents.hour = hour
+        dateComponents.minute = minute
+        return Calendar.current.date(from: dateComponents)
+    }
+    
+    private func formatTimeString(from date: Date) -> String {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+        guard let hour = components.hour, let minute = components.minute else {
+            return "09:00"
+        }
+        return String(format: "%02d:%02d", hour, minute)
     }
 }
 
