@@ -65,10 +65,11 @@ extension TaskItem {
             }
             return DateInterval(start: start, end: end)
         }()
-        
+
         return TaskDTO(
             id: id,
             title: title,
+            details: details,
             durationMinutes: durationMinutes,
             priority: priority,
             fixedTimeSlot: fixedInterval,

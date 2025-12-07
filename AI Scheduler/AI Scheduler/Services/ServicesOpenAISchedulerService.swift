@@ -98,19 +98,21 @@ final class OpenAISchedulerService: ObservableObject {
         
         return """
         You are an intelligent task scheduler. Your job is to optimally schedule tasks into available time slots.
-        
+
         **Input Data:**
         \(requestJSON)
-        
+
         **Instructions:**
         1. Schedule each task into the available time slots
-        2. Respect task priorities (1=Low, 5=High) - schedule high priority tasks first
-        3. Respect fixed time slots (tasks with fixedTimeSlot must be scheduled at that exact time)
+        2. Respect task priorities (1=Low, 10=High) - schedule high priority tasks first
+        3. **CRITICAL**: Respect fixed time slots - tasks with fixedTimeSlot MUST be scheduled at that EXACT date and time, do NOT move them to different days or times
         4. Respect time constraints (work hours, break duration, max consecutive hours)
         5. Do not overlap tasks
         6. Tasks with recurrence should be scheduled on appropriate days
-        7. Optimize for productivity by grouping similar tasks when possible
-        8. Leave buffer time between tasks for transitions
+        7. Consider task details/descriptions for context when scheduling (e.g., grouping related tasks, optimal time of day)
+        8. Optimize for productivity by grouping similar tasks when possible
+        9. Leave buffer time between tasks for transitions
+        10. If a task has a fixedTimeSlot on a weekend (Saturday/Sunday), keep it on that weekend day
         
         **Output Format:**
         Return a valid JSON object with this exact structure:
