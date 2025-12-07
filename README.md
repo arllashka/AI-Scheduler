@@ -2,7 +2,11 @@
 
 An intelligent iOS task scheduling application powered by OpenAI GPT-4o that transforms natural language into optimally scheduled tasks with smart temporal constraint handling.
 
-![Main View](resources/mainview.png)
+<div align="center">
+  <img src="resources/mainview.png" width="250" />
+  <img src="resources/onboard.png" width="250" />
+  <img src="resources/SingleTaskView.png" width="250" />
+</div>
 
 ## 📖 Overview
 
@@ -17,7 +21,11 @@ AI Scheduler is a SwiftUI-based iOS application that combines natural language p
 - **Priority Detection**: Identifies urgency from keywords like "urgent", "important", "when I can"
 - **Multiple Task Creation**: Automatically creates separate instances for recurring patterns
 
-![Natural Language Input](resources/example1.png)
+<div align="center">
+  <img src="resources/example1.png" width="250" />
+  <img src="resources/example1parsed.png" width="250" />
+  <img src="resources/example2parsed.png" width="250" />
+</div>
 
 ### 📅 Advanced Temporal Constraints
 The app understands and respects complex time-based rules:
@@ -27,8 +35,6 @@ The app understands and respects complex time-based rules:
 - **Date Ranges**: "next week" calculates actual Monday-Sunday dates
 - **Fixed Time Slots**: Tasks with specific dates/times are locked and won't be moved
 
-![Parsed Task Review](resources/example1parsed.png)
-
 ### 🤖 AI-Powered Scheduling
 - **OpenAI GPT-4o Integration**: Uses advanced language models for both parsing and scheduling
 - **Smart Task Placement**: Optimizes schedule based on priorities, duration, and constraints
@@ -36,7 +42,11 @@ The app understands and respects complex time-based rules:
 - **Conflict Avoidance**: Never overlaps tasks, respects work hours
 - **Buffer Time Management**: Adds transition time between tasks
 
-![AI Scheduled Calendar](resources/example1calendar.png)
+<div align="center">
+  <img src="resources/example1calendar.png" width="250" />
+  <img src="resources/AIScheduledSummary.png" width="250" />
+  <img src="resources/completedTask.png" width="250" />
+</div>
 
 ### 📊 Dual Input Modes
 1. **Natural Language Mode** (Default)
@@ -50,20 +60,12 @@ The app understands and respects complex time-based rules:
    - Manual duration/priority/recurrence selection
    - Direct control over all parameters
 
-![Parsed Review Example](resources/example2parsed.png)
-
 ### 📱 Rich User Interface
 - **Onboarding Flow**: Smooth introduction to app features
 - **Task List View**: See all tasks with status indicators
 - **Calendar Integration**: Visual calendar view of scheduled tasks
 - **Task Details**: Comprehensive single task view with all metadata
 - **Completion Tracking**: Mark tasks as done with visual feedback
-
-![Onboarding](resources/onboard.png)
-
-![Single Task View](resources/SingleTaskView.png)
-
-![Completed Task](resources/completedTask.png)
 
 ## 🏗️ Technical Architecture
 
@@ -146,8 +148,6 @@ The app understands and respects complex time-based rules:
 6. Calendar Display
    Visual representation of scheduled week
 ```
-
-![AI Scheduling Summary](resources/AIScheduledSummary.png)
 
 ### Scheduling Algorithm
 
